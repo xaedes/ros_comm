@@ -346,6 +346,29 @@ def _launch_file(resolved, a, args, context, ros_config):
     
     return resolved.replace("$(%s)"%a, str(value))
 
+def _launch_dir(resolved, a, args, context, ros_config):
+    """
+    process $(launch_dir idx=-1)
+    
+    :returns: updated resolved argument, ``str``
+    :raises: :exc:`SubstitutionException` : if idx out of bound (of ros_config.roslaunch_files)
+    :raises: :exc:`SubstitutionException` : if no ros_config given
+    """
+    if len(args) == 0:
+        idx = -1
+    else:
+        idx = args[0]
+
+    if ros_config is None: 
+        raise SubstitutionException("$(launch_dir idx) no ros_config given [%s]"%(a))
+    else:
+        try:
+            value = os.path.dirname(os.path.abspath(ros_config.roslaunch_files[idx]))
+        except IndexError as e: 
+            raise SubstitutionException("$(launch_dir idx) idx out of bound [%s]"%(a))
+    
+    return resolved.replace("$(%s)"%a, str(value))
+
 
 def resolve_args(arg_str, context=None, resolve_anon=True, ros_config=None):
     """
@@ -388,6 +411,7 @@ def resolve_args(arg_str, context=None, resolve_anon=True, ros_config=None):
         'param': _param,    
         'has_param': _has_param,    
         'launch_file': _launch_file,    
+        'launch_dir': _launch_dir,    
     }
     resolved = _resolve_args(arg_str, context, ros_config, resolve_anon, commands)
     # than resolve 'find' as it requires the subsequent path to be expanded already
@@ -398,7 +422,7 @@ def resolve_args(arg_str, context=None, resolve_anon=True, ros_config=None):
     return resolved
 
 def _resolve_args(arg_str, context, ros_config, resolve_anon, commands):
-    valid = ['find', 'env', 'optenv', 'anon', 'arg', 'param', 'has_param', 'launch_file']
+    valid = ['find', 'env', 'optenv', 'anon', 'arg', 'param', 'has_param', 'launch_file', 'launch_dir']
     resolved = arg_str
     for a in _collect_args(arg_str):
         splits = [s for s in a.split(' ') if s]
