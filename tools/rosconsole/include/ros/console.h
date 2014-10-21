@@ -32,11 +32,18 @@
 #ifndef ROSCONSOLE_ROSCONSOLE_H
 #define ROSCONSOLE_ROSCONSOLE_H
 
+#include "console_backend.h"
+
 #include <cstdio>
 #include <sstream>
 #include <ros/time.h>
 #include <cstdarg>
 #include <ros/macros.h>
+#include <map>
+
+#ifdef ROSCONSOLE_BACKEND_LOG4CXX
+#include "log4cxx/level.h"
+#endif
 
 // Import/export for windows dll's and visibility for gcc shared libraries.
 
@@ -50,10 +57,6 @@
   #define ROSCONSOLE_DECL
 #endif
 
-// TODO: this header is no longer needed to be included here, but removing it will break various code that incorrectly does not itself include log4cxx/logger.h
-// We should vet all the code using log4cxx directly and make sure the includes/link flags are used in those packages, and then we can remove this include
-#include <log4cxx/logger.h>
-
 #ifdef __GNUC__
 #if __GNUC__ >= 3
 #define ROSCONSOLE_PRINTF_ATTRIBUTE(a, b) __attribute__ ((__format__ (__printf__, a, b)));
@@ -63,21 +66,6 @@
 #ifndef ROSCONSOLE_PRINTF_ATTRIBUTE
 #define ROSCONSOLE_PRINTF_ATTRIBUTE(a, b)
 #endif
-
-// log4cxx forward declarations
-namespace log4cxx
-{
-namespace helpers
-{
-template<typename T> class ObjectPtrT;
-} // namespace helpers
-
-class Level;
-typedef helpers::ObjectPtrT<Level> LevelPtr;
-
-class Logger;
-typedef helpers::ObjectPtrT<Logger> LoggerPtr;
-} // namespace log4cxx
 
 namespace boost
 {
@@ -91,27 +79,59 @@ namespace console
 
 ROSCONSOLE_DECL void shutdown();
 
-namespace levels
-{
-enum Level
-{
-  Debug,
-  Info,
-  Warn,
-  Error,
-  Fatal,
-
-  Count
-};
-}
-typedef levels::Level Level;
-
+#ifdef ROSCONSOLE_BACKEND_LOG4CXX
 extern ROSCONSOLE_DECL log4cxx::LevelPtr g_level_lookup[];
+#endif
+
+extern ROSCONSOLE_DECL bool get_loggers(std::map<std::string, levels::Level>& loggers);
+extern ROSCONSOLE_DECL bool set_logger_level(const std::string& name, levels::Level level);
 
 /**
  * \brief Only exported because the macros need it.  Do not use directly.
  */
 extern ROSCONSOLE_DECL bool g_initialized;
+
+/**
+ * \brief Only exported because the TopicManager need it.  Do not use directly.
+ */
+extern ROSCONSOLE_DECL std::string g_last_error_message;
+
+class LogAppender
+{
+public:
+
+  virtual void log(::ros::console::Level level, const char* str, const char* file, const char* function, int line) = 0;
+
+};
+
+ROSCONSOLE_DECL void register_appender(LogAppender* appender);
+
+struct Token
+{
+  /*
+   * @param level
+   * @param message
+   * @param file
+   * @param function
+   * @param  line
+   */
+  virtual std::string getString(void*, ::ros::console::Level, const char*, const char*, const char*, int) = 0;
+};
+typedef boost::shared_ptr<Token> TokenPtr;
+typedef std::vector<TokenPtr> V_Token;
+
+struct Formatter
+{
+  void init(const char* fmt);
+  void print(void* logger_handle, ::ros::console::Level level, const char* str, const char* file, const char* function, int line);
+  std::string format_;
+  V_Token tokens_;
+};
+
+/**
+ * \brief Only exported because the implementation need it.  Do not use directly.
+ */
+extern ROSCONSOLE_DECL Formatter g_formatter;
 
 /**
  * \brief Don't call this directly.  Performs any required initialization/configuration.  Happens automatically when using the macro API.
@@ -129,11 +149,11 @@ class FilterBase;
  * @param line Line of code this logging statement is from (usually generated with __LINE__)
  * @param fmt Format string
  */
-ROSCONSOLE_DECL void print(FilterBase* filter, log4cxx::Logger* logger, Level level,
+ROSCONSOLE_DECL void print(FilterBase* filter, void* logger, Level level,
 	   const char* file, int line, 
 	   const char* function, const char* fmt, ...) ROSCONSOLE_PRINTF_ATTRIBUTE(7, 8);
 
-ROSCONSOLE_DECL void print(FilterBase* filter, log4cxx::Logger* logger, Level level,
+ROSCONSOLE_DECL void print(FilterBase* filter, void* logger, Level level,
 	   const std::stringstream& str, const char* file, int line, const char* function);
 
 struct ROSCONSOLE_DECL LogLocation;
@@ -171,7 +191,7 @@ struct FilterParams
   const char* message;                      ///< [input] The formatted message that will be output
 
   // input/output parameters
-  log4cxx::LoggerPtr logger;                ///< [input/output] Logger that this message will be output to.  If changed, uses the new logger
+  void* logger;                             ///< [input/output] Handle identifying logger that this message will be output to.  If changed, uses the new logger
   Level level;                              ///< [input/output] Severity level.  If changed, uses the new level
 
   // output parameters
@@ -237,7 +257,7 @@ struct LogLocation
   bool initialized_;
   bool logger_enabled_;
   ::ros::console::Level level_;
-  log4cxx::Logger* logger_;
+  void* logger_;
 };
 
 ROSCONSOLE_DECL void vformatToBuffer(boost::shared_array<char>& buffer, size_t& buffer_size, const char* fmt, va_list args);
@@ -306,20 +326,20 @@ ROSCONSOLE_DECL std::string formatToString(const char* fmt, ...);
 
 #define ROSCONSOLE_DEFINE_LOCATION(cond, level, name) \
   ROSCONSOLE_AUTOINIT; \
-  static ::ros::console::LogLocation loc = {false, false, ::ros::console::levels::Count, 0}; /* Initialized at compile-time */ \
-  if (ROS_UNLIKELY(!loc.initialized_)) \
+  static ::ros::console::LogLocation __rosconsole_define_location__loc = {false, false, ::ros::console::levels::Count, 0}; /* Initialized at compile-time */ \
+  if (ROS_UNLIKELY(!__rosconsole_define_location__loc.initialized_)) \
   { \
-    initializeLogLocation(&loc, name, level); \
+    initializeLogLocation(&__rosconsole_define_location__loc, name, level); \
   } \
-  if (ROS_UNLIKELY(loc.level_ != level)) \
+  if (ROS_UNLIKELY(__rosconsole_define_location__loc.level_ != level)) \
   { \
-    setLogLocationLevel(&loc, level); \
-    checkLogLocationEnabled(&loc); \
+    setLogLocationLevel(&__rosconsole_define_location__loc, level); \
+    checkLogLocationEnabled(&__rosconsole_define_location__loc); \
   } \
-  bool enabled = loc.logger_enabled_ && (cond);
+  bool __rosconsole_define_location__enabled = __rosconsole_define_location__loc.logger_enabled_ && (cond);
 
 #define ROSCONSOLE_PRINT_AT_LOCATION_WITH_FILTER(filter, ...) \
-    ::ros::console::print(filter, loc.logger_, loc.level_, __FILE__, __LINE__, __ROSCONSOLE_FUNCTION__, __VA_ARGS__)
+    ::ros::console::print(filter, __rosconsole_define_location__loc.logger_, __rosconsole_define_location__loc.level_, __FILE__, __LINE__, __ROSCONSOLE_FUNCTION__, __VA_ARGS__)
 
 #define ROSCONSOLE_PRINT_AT_LOCATION(...) \
     ROSCONSOLE_PRINT_AT_LOCATION_WITH_FILTER(0, __VA_ARGS__)
@@ -330,7 +350,7 @@ ROSCONSOLE_DECL std::string formatToString(const char* fmt, ...);
   { \
     std::stringstream __rosconsole_print_stream_at_location_with_filter__ss__; \
     __rosconsole_print_stream_at_location_with_filter__ss__ << args; \
-    ::ros::console::print(filter, loc.logger_, loc.level_, __rosconsole_print_stream_at_location_with_filter__ss__, __FILE__, __LINE__, __ROSCONSOLE_FUNCTION__); \
+    ::ros::console::print(filter, __rosconsole_define_location__loc.logger_, __rosconsole_define_location__loc.level_, __rosconsole_print_stream_at_location_with_filter__ss__, __FILE__, __LINE__, __ROSCONSOLE_FUNCTION__); \
   } while (0)
 
 #define ROSCONSOLE_PRINT_STREAM_AT_LOCATION(args) \
@@ -350,7 +370,7 @@ ROSCONSOLE_DECL std::string formatToString(const char* fmt, ...);
   { \
     ROSCONSOLE_DEFINE_LOCATION(cond, level, name); \
     \
-    if (ROS_UNLIKELY(enabled)) \
+    if (ROS_UNLIKELY(__rosconsole_define_location__enabled)) \
     { \
       ROSCONSOLE_PRINT_AT_LOCATION(__VA_ARGS__); \
     } \
@@ -369,7 +389,7 @@ ROSCONSOLE_DECL std::string formatToString(const char* fmt, ...);
   do \
   { \
     ROSCONSOLE_DEFINE_LOCATION(cond, level, name); \
-    if (ROS_UNLIKELY(enabled)) \
+    if (ROS_UNLIKELY(__rosconsole_define_location__enabled)) \
     { \
       ROSCONSOLE_PRINT_STREAM_AT_LOCATION(args); \
     } \
@@ -386,7 +406,7 @@ ROSCONSOLE_DECL std::string formatToString(const char* fmt, ...);
   { \
     ROSCONSOLE_DEFINE_LOCATION(true, level, name); \
     static bool hit = false; \
-    if (ROS_UNLIKELY(enabled) && ROS_UNLIKELY(!hit)) \
+    if (ROS_UNLIKELY(__rosconsole_define_location__enabled) && ROS_UNLIKELY(!hit)) \
     { \
       hit = true; \
       ROSCONSOLE_PRINT_AT_LOCATION(__VA_ARGS__); \
@@ -405,7 +425,7 @@ ROSCONSOLE_DECL std::string formatToString(const char* fmt, ...);
   { \
     ROSCONSOLE_DEFINE_LOCATION(true, level, name); \
     static bool __ros_log_stream_once__hit__ = false; \
-    if (ROS_UNLIKELY(enabled) && ROS_UNLIKELY(!__ros_log_stream_once__hit__)) \
+    if (ROS_UNLIKELY(__rosconsole_define_location__enabled) && ROS_UNLIKELY(!__ros_log_stream_once__hit__)) \
     { \
       __ros_log_stream_once__hit__ = true; \
       ROSCONSOLE_PRINT_STREAM_AT_LOCATION(args); \
@@ -425,7 +445,7 @@ ROSCONSOLE_DECL std::string formatToString(const char* fmt, ...);
     ROSCONSOLE_DEFINE_LOCATION(true, level, name); \
     static double last_hit = 0.0; \
     ::ros::Time now = ::ros::Time::now(); \
-    if (ROS_UNLIKELY(enabled) && ROS_UNLIKELY(last_hit + rate <= now.toSec())) \
+    if (ROS_UNLIKELY(__rosconsole_define_location__enabled) && ROS_UNLIKELY(last_hit + rate <= now.toSec())) \
     { \
       last_hit = now.toSec(); \
       ROSCONSOLE_PRINT_AT_LOCATION(__VA_ARGS__); \
@@ -446,7 +466,7 @@ ROSCONSOLE_DECL std::string formatToString(const char* fmt, ...);
     ROSCONSOLE_DEFINE_LOCATION(true, level, name); \
     static double __ros_log_stream_throttle__last_hit__ = 0.0; \
     ::ros::Time __ros_log_stream_throttle__now__ = ::ros::Time::now(); \
-    if (ROS_UNLIKELY(enabled) && ROS_UNLIKELY(__ros_log_stream_throttle__last_hit__ + rate <= __ros_log_stream_throttle__now__.toSec())) \
+    if (ROS_UNLIKELY(__rosconsole_define_location__enabled) && ROS_UNLIKELY(__ros_log_stream_throttle__last_hit__ + rate <= __ros_log_stream_throttle__now__.toSec())) \
     { \
       __ros_log_stream_throttle__last_hit__ = __ros_log_stream_throttle__now__.toSec(); \
       ROSCONSOLE_PRINT_STREAM_AT_LOCATION(args); \
@@ -464,7 +484,7 @@ ROSCONSOLE_DECL std::string formatToString(const char* fmt, ...);
   do \
   { \
     ROSCONSOLE_DEFINE_LOCATION(true, level, name); \
-    if (ROS_UNLIKELY(enabled) && (filter)->isEnabled()) \
+    if (ROS_UNLIKELY(__rosconsole_define_location__enabled) && (filter)->isEnabled()) \
     { \
       ROSCONSOLE_PRINT_AT_LOCATION_WITH_FILTER(filter, __VA_ARGS__); \
     } \
@@ -481,7 +501,7 @@ ROSCONSOLE_DECL std::string formatToString(const char* fmt, ...);
   do \
   { \
     ROSCONSOLE_DEFINE_LOCATION(true, level, name); \
-    if (ROS_UNLIKELY(enabled) && (filter)->isEnabled()) \
+    if (ROS_UNLIKELY(__rosconsole_define_location__enabled) && (filter)->isEnabled()) \
     { \
       ROSCONSOLE_PRINT_STREAM_AT_LOCATION_WITH_FILTER(filter, args); \
     } \

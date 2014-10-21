@@ -106,6 +106,8 @@ def _parse_arg(tag, context):
             return (name, _get_arg_value(tag, context))
     else:
         return (name, _get_arg_value(tag, context))
+    # nothing to return (no value, or conditional wasn't satisfied)
+    return None
 
 def _parse_subcontext(tags, context):
     subcontext = {'arg': {}}
@@ -115,8 +117,11 @@ def _parse_subcontext(tags, context):
     
     for tag in [t for t in tags if t.nodeType == DomNode.ELEMENT_NODE]:
         if tag.tagName == 'arg':
-            (name, val) = _parse_arg(tag, context)
-            subcontext['arg'][name] = val
+            # None is returned for args with if/unless that evaluate to false
+            ret = _parse_arg(tag, context)
+            if ret is not None:
+                (name, val) = ret
+                subcontext['arg'][name] = val
     return subcontext
 
 def _parse_launch(tags, launch_file, file_deps, verbose, context):
@@ -222,7 +227,7 @@ def print_deps(base_pkg, file_deps, verbose):
 
     # for verbose output we print extra source information
     if verbose:
-        for f, deps in file_deps.iteritems():
+        for f, deps in file_deps.items():
             for p, t in deps.nodes:
                 print("%s [%s/%s]"%(p, p, t))
 
@@ -235,7 +240,7 @@ def print_deps(base_pkg, file_deps, verbose):
 
     # print out list of package dependencies
     pkgs = [] 
-    for deps in file_deps.itervalues():
+    for deps in file_deps.values():
         pkgs.extend(deps.pkgs)
     # print space-separated to be friendly to rosmake
     print(' '.join([p for p in set(pkgs)]))
@@ -255,7 +260,7 @@ def calculate_missing(base_pkg, missing, file_deps):
     @rtype: { str: set(str) }
     """
     rospack = rospkg.RosPack()
-    for launch_file in file_deps.iterkeys():
+    for launch_file in file_deps.keys():
         pkg = rospkg.get_package_name(os.path.dirname(os.path.abspath(launch_file)))
 
         if pkg is None: #cannot determine package
@@ -263,6 +268,13 @@ def calculate_missing(base_pkg, missing, file_deps):
             continue
         m = rospack.get_manifest(pkg)
         d_pkgs = set([d.name for d in m.depends])
+        if m.is_catkin:
+            # for catkin packages consider the run dependencies instead
+            # else not released packages will not appear in the dependency list
+            # since rospkg  does uses rosdep to decide which dependencies to return
+            from catkin_pkg.package import parse_package
+            p = parse_package(os.path.dirname(m.filename))
+            d_pkgs = set([d.name for d in p.run_depends])
         # make sure we don't count ourselves as a dep
         d_pkgs.add(pkg)
 
@@ -337,7 +349,7 @@ def roslaunch_deps_main(argv=sys.argv):
     
     if options.warn:
         print('\nMissing declarations:')
-        for pkg, miss in missing.iteritems():
+        for pkg, miss in missing.items():
             if miss:
                 print("%s/manifest.xml:"%pkg)
                 for m in miss:

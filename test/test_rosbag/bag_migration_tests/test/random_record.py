@@ -35,7 +35,10 @@ import unittest
 import rospy
 import rostest
 import sys
-from cStringIO import StringIO
+try:
+    from cStringIO import StringIO
+except ImportError:
+    from io import StringIO
 import time
 from random_messages import RandomMsgGen
 import subprocess
@@ -89,7 +92,7 @@ class RandomRecord(unittest.TestCase):
     rospy.sleep(rospy.Duration.from_sec(5.0))
 
     # Initial terminate using SIGINT so bag clean up nicely
-    os.kill(f1.pid, signal.SIGINT)
+    os.kill(-os.getpgrp(), signal.SIGINT)
 
     # Sleep an extra 5 seconds for good measure
     rospy.sleep(rospy.Duration.from_sec(5.0))

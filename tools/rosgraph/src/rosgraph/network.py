@@ -254,6 +254,8 @@ def get_bind_address(address=None):
         #localhost or 127/8
         if use_ipv6():
             return '::1'
+        elif address.startswith('127.'):
+            return address
         else:
             return '127.0.0.1' #loopback
     else:
@@ -390,7 +392,7 @@ def encode_ros_handshake_header(header):
     :param header: header field keys/values, ``dict``
     :returns: header encoded as byte string, ``str``
     """    
-    fields = ["%s=%s"%(k,v) for k,v in header.items()]
+    fields = ["%s=%s" % (k, header[k]) for k in sorted(header.keys())]
     
     # in the usual configuration, the error 'TypeError: can't concat bytes to str' appears:
     if python3 == 0:

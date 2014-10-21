@@ -2,6 +2,57 @@
 Changelog for package message_filters
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.11.9 (2014-08-18)
+-------------------
+
+1.11.8 (2014-08-04)
+-------------------
+
+1.11.7 (2014-07-18)
+-------------------
+
+1.11.6 (2014-07-10)
+-------------------
+
+1.11.5 (2014-06-24)
+-------------------
+
+1.11.4 (2014-06-16)
+-------------------
+* add approximate Python time synchronizer (used to be in camera_calibration) (`#424 <https://github.com/ros/ros_comm/issues/424>`_)
+
+1.11.3 (2014-05-21)
+-------------------
+
+1.11.2 (2014-05-08)
+-------------------
+
+1.11.1 (2014-05-07)
+-------------------
+* update API to use boost::signals2 (`#267 <https://github.com/ros/ros_comm/issues/267>`_)
+
+1.11.0 (2014-03-04)
+-------------------
+* suppress boost::signals deprecation warning (`#362 <https://github.com/ros/ros_comm/issues/362>`_)
+
+1.10.0 (2014-02-11)
+-------------------
+
+1.9.54 (2014-01-27)
+-------------------
+
+1.9.53 (2014-01-14)
+-------------------
+* add kwargs for message_filters.Subscriber
+
+1.9.52 (2014-01-08)
+-------------------
+
+1.9.51 (2014-01-07)
+-------------------
+* update code after refactoring into rosbag_storage and roscpp_core (`#299 <https://github.com/ros/ros_comm/issues/299>`_)
+* fix segmentation fault on OS X 10.9 (clang / libc++)
+
 1.9.50 (2013-10-04)
 -------------------
 

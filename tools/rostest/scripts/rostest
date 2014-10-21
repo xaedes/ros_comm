@@ -32,4 +32,5 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 from rostest import rostestmain
+
 rostestmain()
